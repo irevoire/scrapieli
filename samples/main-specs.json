@@ -1,0 +1,20 @@
+{
+  "allowed_domains": ["specs.meilisearch.com"],
+  "index_uid": "main",
+  "start_urls": ["https://specs.meilisearch.com"],
+  "selectors": {
+    "lvl0": {
+      "selector": ".theme-default-content > ul:nth-child(1) li:nth-child(1)",
+      "global": true,
+      "default_value": "Specifications"
+    },
+    "lvl1": ".theme-default-content h1",
+    "lvl2": ".theme-default-content h2",
+    "lvl3": ".theme-default-content h3",
+    "lvl4": ".theme-default-content h4",
+    "lvl5": ".theme-default-content h5",
+    "text": "p"
+  },
+  "strip_chars": " .,;:#",
+  "scrap_start_urls": true
+}
