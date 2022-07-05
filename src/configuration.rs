@@ -1,6 +1,10 @@
 use scraper::Html;
 use serde::Deserialize;
 use serde_json::Value;
+use spider::page::Page;
+use uuid::Uuid;
+
+use crate::output::Output;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -36,58 +40,28 @@ pub struct Selectors {
 }
 
 impl Selectors {
-    pub fn scrape(&self, page: &Html) {
-        match self.lvl0 {
-            Some(ref selector) => selector.scrape(page),
-            None => (),
-        }
+    pub fn scrape(&self, page: &Page) -> Output {
+        let html = Html::parse_document(&page.get_html());
 
-        match self.lvl1 {
-            Some(ref selector) => selector.scrape(page),
-            None => (),
+        Output {
+            hierarchy_radio_lvl0: None,
+            hierarchy_radio_lvl1: None,
+            hierarchy_radio_lvl2: None,
+            hierarchy_radio_lvl3: None,
+            hierarchy_radio_lvl4: None,
+            hierarchy_radio_lvl5: None,
+            hierarchy_lvl0: self.lvl0.as_ref().map(|selector| selector.scrape(&html)),
+            hierarchy_lvl1: self.lvl1.as_ref().map(|selector| selector.scrape(&html)),
+            hierarchy_lvl2: self.lvl2.as_ref().map(|selector| selector.scrape(&html)),
+            hierarchy_lvl3: self.lvl3.as_ref().map(|selector| selector.scrape(&html)),
+            hierarchy_lvl4: self.lvl4.as_ref().map(|selector| selector.scrape(&html)),
+            hierarchy_lvl5: self.lvl5.as_ref().map(|selector| selector.scrape(&html)),
+            hierarchy_lvl6: self.lvl6.as_ref().map(|selector| selector.scrape(&html)),
+            content: self.text.scrape(&html),
+            object_id: Uuid::new_v4().to_string(),
+            anchor: get_anchor(self.text.selector(), &html),
+            url: page.get_url().clone(),
         }
-
-        match self.lvl2 {
-            Some(ref selector) => selector.scrape(page),
-            None => (),
-        }
-
-        match self.lvl3 {
-            Some(ref selector) => selector.scrape(page),
-            None => (),
-        }
-
-        match self.lvl4 {
-            Some(ref selector) => selector.scrape(page),
-            None => (),
-        }
-
-        match self.lvl5 {
-            Some(ref selector) => selector.scrape(page),
-            None => (),
-        }
-
-        match self.lvl6 {
-            Some(ref selector) => selector.scrape(page),
-            None => (),
-        }
-
-        match self.lvl7 {
-            Some(ref selector) => selector.scrape(page),
-            None => (),
-        }
-
-        match self.lvl8 {
-            Some(ref selector) => selector.scrape(page),
-            None => (),
-        }
-
-        match self.lvl9 {
-            Some(ref selector) => selector.scrape(page),
-            None => (),
-        }
-
-        self.text.scrape(page);
     }
 }
 
@@ -104,14 +78,47 @@ pub enum Selector {
 }
 
 impl Selector {
-    pub fn scrape(&self, page: &Html) {
-        let selector = match self {
-            Selector::Inlined(s) => s,
-            Selector::Full { selector, .. } => selector,
-        };
+    pub fn selector(&self) -> &str {
+        match self {
+            Selector::Inlined(s) => s.as_ref(),
+            Selector::Full { selector, .. } => selector.as_ref(),
+        }
+    }
 
+    pub fn scrape(&self, page: &Html) -> String {
+        let selector = self.selector();
         let selector = scraper::Selector::parse(selector).expect("could not parse selector");
-        let res = page.select(&selector);
-        println!("Got {res:?} from selector {selector:?}");
+        let mut res = page.select(&selector);
+        match res.next() {
+            Some(node) => node.text().fold(String::new(), |acc, elem| acc + elem),
+            None => String::new(),
+        }
+    }
+}
+
+fn get_anchor(selector: &str, page: &Html) -> Option<String> {
+    let selector = scraper::Selector::parse(selector).expect("could not parse selector");
+    let mut res = page.select(&selector);
+
+    let node = match res.next() {
+        Some(node) => node,
+        None => return None,
+    };
+
+    if let Some(tag) = node.value().id() {
+        return Some(tag.to_string());
+    }
+
+    let mut iter = node.ancestors();
+
+    loop {
+        match iter.next() {
+            None => return None,
+            Some(node) => {
+                if let Some(tag) = node.value().as_element().and_then(|el| el.id()) {
+                    return Some(tag.to_string());
+                }
+            }
+        }
     }
 }
