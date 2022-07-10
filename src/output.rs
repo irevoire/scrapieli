@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct Output {
     pub hierarchy_radio_lvl0: Option<String>,
     pub hierarchy_radio_lvl1: Option<String>,
