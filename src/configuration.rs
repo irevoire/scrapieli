@@ -1,5 +1,5 @@
-use scraper::Html;
-use serde::Deserialize;
+use scraper::{html::Select, ElementRef, Html};
+use serde::{de, Deserialize};
 use serde_json::Value;
 use spider::page::Page;
 use uuid::Uuid;
@@ -33,9 +33,6 @@ pub struct Selectors {
     pub lvl4: Option<Selector>,
     pub lvl5: Option<Selector>,
     pub lvl6: Option<Selector>,
-    pub lvl7: Option<Selector>,
-    pub lvl8: Option<Selector>,
-    pub lvl9: Option<Selector>,
     pub text: Selector,
 }
 
@@ -43,25 +40,32 @@ impl Selectors {
     pub fn scrape(&self, page: &Page) -> Output {
         let html = Html::parse_document(&page.get_html());
 
-        Output {
+        let base_output = Output {
             hierarchy_radio_lvl0: None,
             hierarchy_radio_lvl1: None,
             hierarchy_radio_lvl2: None,
             hierarchy_radio_lvl3: None,
             hierarchy_radio_lvl4: None,
             hierarchy_radio_lvl5: None,
-            hierarchy_lvl0: self.lvl0.as_ref().map(|selector| selector.scrape(&html)),
-            hierarchy_lvl1: self.lvl1.as_ref().map(|selector| selector.scrape(&html)),
-            hierarchy_lvl2: self.lvl2.as_ref().map(|selector| selector.scrape(&html)),
-            hierarchy_lvl3: self.lvl3.as_ref().map(|selector| selector.scrape(&html)),
-            hierarchy_lvl4: self.lvl4.as_ref().map(|selector| selector.scrape(&html)),
-            hierarchy_lvl5: self.lvl5.as_ref().map(|selector| selector.scrape(&html)),
-            hierarchy_lvl6: self.lvl6.as_ref().map(|selector| selector.scrape(&html)),
-            content: self.text.scrape(&html),
+            hierarchy_lvl0: None,
+            hierarchy_lvl1: None,
+            hierarchy_lvl2: None,
+            hierarchy_lvl3: None,
+            hierarchy_lvl4: None,
+            hierarchy_lvl5: None,
+            hierarchy_lvl6: None,
+            content: self
+                .text
+                .scrape(&html)
+                .take(1)
+                .map(|elem_ref| element_ref_to_string(&elem_ref))
+                .collect::<String>(),
             object_id: Uuid::new_v4().to_string(),
             anchor: get_anchor(self.text.selector(), &html),
             url: page.get_url().clone(),
-        }
+        };
+
+        base_output
     }
 }
 
@@ -69,36 +73,31 @@ impl Selectors {
 #[serde(untagged)]
 #[serde(deny_unknown_fields)]
 pub enum Selector {
-    Inlined(String),
+    Inlined(#[serde(deserialize_with = "deserialize_selector")] scraper::Selector),
     Full {
-        selector: String,
+        #[serde(deserialize_with = "deserialize_selector")]
+        selector: scraper::Selector,
         global: bool,
         default_value: String,
     },
 }
 
 impl Selector {
-    pub fn selector(&self) -> &str {
+    pub fn selector(&self) -> &scraper::Selector {
         match self {
-            Selector::Inlined(s) => s.as_ref(),
-            Selector::Full { selector, .. } => selector.as_ref(),
+            Selector::Inlined(s) => s,
+            Selector::Full { selector, .. } => selector,
         }
     }
 
-    pub fn scrape(&self, page: &Html) -> String {
+    pub fn scrape<'a, 'b>(&'a self, page: &'b Html) -> Select<'b, 'a> {
         let selector = self.selector();
-        let selector = scraper::Selector::parse(selector).expect("could not parse selector");
-        let mut res = page.select(&selector);
-        match res.next() {
-            Some(node) => node.text().fold(String::new(), |acc, elem| acc + elem),
-            None => String::new(),
-        }
+        page.select(selector)
     }
 }
 
-fn get_anchor(selector: &str, page: &Html) -> Option<String> {
-    let selector = scraper::Selector::parse(selector).expect("could not parse selector");
-    let mut res = page.select(&selector);
+fn get_anchor(selector: &scraper::Selector, page: &Html) -> Option<String> {
+    let mut res = page.select(selector);
 
     let node = match res.next() {
         Some(node) => node,
@@ -121,4 +120,18 @@ fn get_anchor(selector: &str, page: &Html) -> Option<String> {
             }
         }
     }
+}
+
+fn element_ref_to_string(element_ref: &ElementRef) -> String {
+    element_ref
+        .text()
+        .fold(String::new(), |acc, elem| acc + elem)
+}
+
+fn deserialize_selector<'de, D>(deserializer: D) -> Result<scraper::Selector, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    let s: &str = de::Deserialize::deserialize(deserializer)?;
+    Ok(scraper::Selector::parse(s).expect("Couldn’t parse selector"))
 }

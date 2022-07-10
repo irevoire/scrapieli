@@ -2,7 +2,6 @@ mod configuration;
 mod output;
 
 use configuration::Configuration;
-use scraper::Html;
 use spider::website::Website;
 
 fn main() {
